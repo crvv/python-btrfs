@@ -96,7 +96,7 @@ def _IOWR(_type, nr, _struct):
 
 DEVICE_PATH_NAME_MAX = 1024
 
-ioctl_fs_info_args = struct.Struct('=QQ16sLLL980x')
+ioctl_fs_info_args = struct.Struct('=QQ16sLLLHHQQ16s944x')
 IOC_FS_INFO = _IOR(BTRFS_IOCTL_MAGIC, 31, ioctl_fs_info_args)
 
 
@@ -119,13 +119,21 @@ class FsInfo(object):
     """
     def __init__(self, buf):
         self.max_id, self.num_devices, fsid_bytes, self.nodesize, self.sectorsize, \
-            self.clone_alignment = ioctl_fs_info_args.unpack(buf)
+            self.clone_alignment, self.csum_type, self.csum_size, _, \
+            self.generation, metadata_uuid_bytes  = ioctl_fs_info_args.unpack(buf)
         self.fsid = uuid.UUID(bytes=fsid_bytes)
+        self.metadata_uuid = uuid.UUID(bytes=metadata_uuid_bytes)
 
     def __str__(self):
-        return "max_id {0} num_devices {1} fsid {2} nodesize {3} sectorsize {4} " \
-            "clone_alignment {5}".format(self.max_id, self.num_devices, self.fsid, self.nodesize,
-                                         self.sectorsize, self.clone_alignment)
+        csum_type = _csum_type_str_map.get(self.csum_type, self.csum_type)
+        return (
+                "max_id {0} num_devices {1} fsid {2} nodesize {3} sectorsize {4} "
+                "clone_alignment {5} csum_type {6} csum_size {7} generation {8} "
+                "metadata_uuid {9}"
+                .format(self.max_id, self.num_devices, self.fsid, self.nodesize,
+                        self.sectorsize, self.clone_alignment, csum_type,
+                        self.csum_size, self.generation, self.metadata_uuid)
+            )
 
     @staticmethod
     def _pretty_properties():
@@ -148,6 +156,7 @@ def fs_info(fd):
         :class:`btrfs.ctree.FileSystem` object.
     """
     buf = bytearray(ioctl_fs_info_args.size)
+    ioctl_fs_info_args.pack_into(buf, 0, 0, 0, b'', 0, 0, 0, 0, 0, 0b111, 0, b'')
     fcntl.ioctl(fd, IOC_FS_INFO, buf)
     return FsInfo(buf)
 
@@ -1358,6 +1367,18 @@ _feature_incompat_str_map = {
     FEATURE_INCOMPAT_RAID56: 'raid56',
     FEATURE_INCOMPAT_SKINNY_METADATA: 'skinny_metadata',
     FEATURE_INCOMPAT_NO_HOLES: 'no_holes',
+}
+
+CSUM_TYPE_CRC32 = 0
+CSUM_TYPE_XXHASH = 1
+CSUM_TYPE_SHA256 = 2
+CSUM_TYPE_BLAKE2 = 3
+
+_csum_type_str_map = {
+    CSUM_TYPE_CRC32 : 'crc32',
+    CSUM_TYPE_XXHASH: 'xxhash',
+    CSUM_TYPE_SHA256: 'sha256',
+    CSUM_TYPE_BLAKE2: 'blake2',
 }
 
 
